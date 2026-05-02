@@ -1,11 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { analyzeEmail } from "./analyzeEmail.js";
-import { lookupDomainWhois } from "./whoisLookup.js";
-import { verifyCmfEntity } from "./cmfVerify.js";
-import { checkEmailPatterns } from "./checkEmailPatterns.js";
+import { analyzeEmail } from "../domain/analyzer.js";
+import { lookupDomainWhois } from "../domain/whois.js";
+import { verifyCmfEntity } from "../domain/cmf.js";
+import { checkEmailPatterns } from "../domain/patterns.js";
 
-export function registerTools(server: McpServer): void {
+export function registerPhishingTools(server: McpServer): void {
   server.registerTool(
     "analyze_email",
     {
@@ -31,14 +31,7 @@ export function registerTools(server: McpServer): void {
     },
     async ({ emailContent, senderEmail, subject }) => {
       const report = await analyzeEmail({ emailContent, senderEmail, subject });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(report, null, 2),
-          },
-        ],
-      };
+      return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
     }
   );
 
@@ -57,14 +50,7 @@ export function registerTools(server: McpServer): void {
     },
     async ({ domain }) => {
       const data = await lookupDomainWhois(domain);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(data, null, 2),
-          },
-        ],
-      };
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
 
@@ -84,14 +70,7 @@ export function registerTools(server: McpServer): void {
     },
     async ({ institutionName }) => {
       const result = await verifyCmfEntity(institutionName);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -109,21 +88,14 @@ export function registerTools(server: McpServer): void {
         subject: z.string().optional().describe("Asunto del correo"),
       },
     },
-    async ({ emailContent, senderEmail, subject }) => {
+    ({ emailContent, senderEmail, subject }) => {
       const result = checkEmailPatterns(emailContent, senderEmail, subject);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     }
   );
 }
 
-export const TOOL_NAMES = [
+export const PHISHING_TOOL_NAMES = [
   "analyze_email",
   "lookup_domain_whois",
   "verify_cmf_entity",
