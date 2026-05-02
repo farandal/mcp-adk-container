@@ -1,8 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
-import type { FraudReport, AnalyzeEmailInput } from "../types/index.js";
-import { lookupDomainWhois } from "./whoisLookup.js";
-import { verifyCmfEntity } from "./cmfVerify.js";
-import { checkEmailPatterns } from "./checkEmailPatterns.js";
+import type { FraudReport, AnalyzeEmailInput } from "../../../core/types.js";
+import { getAnthropicClient } from "../../../core/claude.js";
+import { lookupDomainWhois } from "./whois.js";
+import { verifyCmfEntity } from "./cmf.js";
+import { checkEmailPatterns } from "./patterns.js";
 
 const SYSTEM_PROMPT = `Eres un experto en ciberseguridad financiera chilena. Tu tarea es analizar correos electrónicos potencialmente fraudulentos y generar informes de riesgo detallados, comprensibles para ciudadanos no técnicos.
 
@@ -72,30 +72,22 @@ Genera el informe JSON de riesgo.`;
 }
 
 export async function analyzeEmail(input: AnalyzeEmailInput): Promise<FraudReport> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const client = getAnthropicClient();
 
-  // Decode base64 if needed
   let emailContent = input.emailContent;
   if (/^[A-Za-z0-9+/=\n]+$/.test(emailContent.trim()) && emailContent.length > 100) {
     try {
       emailContent = Buffer.from(emailContent.trim(), "base64").toString("utf-8");
     } catch {
-      // Not base64, use as-is
+      // not base64, use as-is
     }
   }
 
   const resolvedInput: AnalyzeEmailInput = { ...input, emailContent };
-
-  // Run pattern check immediately (synchronous)
   const patterns = checkEmailPatterns(emailContent, input.senderEmail, input.subject);
-
-  // Determine institutions to verify with CMF
   const mentionedInstitutions = extractMentionedInstitutions(emailContent);
-
-  // Resolve domain for WHOIS
   const senderDomain = input.senderEmail ? extractDomainFromEmail(input.senderEmail) : null;
 
-  // Run WHOIS and CMF lookups in parallel
   const [whoisData, cmfResult] = await Promise.all([
     senderDomain ? lookupDomainWhois(senderDomain) : Promise.resolve(null),
     mentionedInstitutions.length > 0
@@ -103,7 +95,6 @@ export async function analyzeEmail(input: AnalyzeEmailInput): Promise<FraudRepor
       : Promise.resolve(null),
   ]);
 
-  // Build summaries for the prompt
   const whoisSummary = whoisData
     ? `dominio=${whoisData.domain}, registrador=${whoisData.registrar ?? "desconocido"}, ` +
       `creado=${whoisData.created ?? "desconocido"}, país=${whoisData.country ?? "desconocido"}, ` +
@@ -141,11 +132,9 @@ export async function analyzeEmail(input: AnalyzeEmailInput): Promise<FraudRepor
     .map((b) => b.text)
     .join("");
 
-  // Extract JSON from the response (handle markdown code blocks)
   const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]+?)\s*```/) ?? rawText.match(/(\{[\s\S]+\})/);
 
   if (!jsonMatch) {
-    // Fallback report if Claude doesn't return valid JSON
     return {
       riskScore: 50,
       riskLevel: "MEDIUM",

@@ -1,4 +1,4 @@
-import type { WhoisData } from "../types/index.js";
+import type { WhoisData } from "../../../core/types.js";
 
 interface RdapResponse {
   ldhName?: string;

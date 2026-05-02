@@ -1,4 +1,4 @@
-import type { CmfEntityResult } from "../types/index.js";
+import type { CmfEntityResult } from "../../../core/types.js";
 
 interface CmfInstitution {
   Codigo?: string;
@@ -41,12 +41,7 @@ export async function verifyCmfEntity(institutionName: string): Promise<CmfEntit
   const apiKey = process.env.CMF_API_KEY;
 
   if (!apiKey) {
-    return {
-      found: false,
-      entityName: undefined,
-      entityType: undefined,
-      matchScore: 0,
-    };
+    return { found: false, matchScore: 0 };
   }
 
   try {
@@ -84,7 +79,7 @@ export async function verifyCmfEntity(institutionName: string): Promise<CmfEntit
     return bestMatch;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("[cmfVerify] Error:", message);
+    console.error("[cmf] Error:", message);
     return { found: false };
   }
 }

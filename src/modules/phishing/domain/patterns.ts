@@ -1,4 +1,4 @@
-import type { PatternCheckResult } from "../types/index.js";
+import type { PatternCheckResult } from "../../../core/types.js";
 
 const SUSPICIOUS_TLDS = [".xyz", ".top", ".club", ".work", ".click", ".link", ".site", ".online", ".tech", ".info"];
 
@@ -61,7 +61,6 @@ export function checkEmailPatterns(
   const fullText = [emailContent, subject ?? "", senderEmail ?? ""].join(" ").toLowerCase();
   const links = extractLinksFromText(emailContent);
 
-  // Urgency keywords
   for (const keyword of URGENCY_KEYWORDS) {
     if (fullText.includes(keyword.toLowerCase())) {
       patterns.push("urgency_language");
@@ -70,7 +69,6 @@ export function checkEmailPatterns(
     }
   }
 
-  // Suspicious TLD in sender domain
   if (senderEmail) {
     const domain = extractDomain(senderEmail);
     if (domain) {
@@ -82,7 +80,6 @@ export function checkEmailPatterns(
         }
       }
 
-      // Display name vs domain mismatch: "Banco de Chile <soporte@gmail.com>"
       const displayName = extractDisplayName(senderEmail);
       if (displayName) {
         for (const { pattern, institution } of CHILEAN_IMPERSONATION_PATTERNS) {
@@ -93,7 +90,6 @@ export function checkEmailPatterns(
         }
       }
 
-      // Institution mentioned in body but domain doesn't match
       for (const { pattern, institution } of CHILEAN_IMPERSONATION_PATTERNS) {
         if (pattern.test(fullText) && !pattern.test(domain)) {
           if (!patterns.includes("institution_mismatch")) {
@@ -105,7 +101,6 @@ export function checkEmailPatterns(
     }
   }
 
-  // Suspicious links
   for (const link of links) {
     for (const urlPattern of SUSPICIOUS_URL_PATTERNS) {
       if (urlPattern.test(link)) {
@@ -118,19 +113,16 @@ export function checkEmailPatterns(
     }
   }
 
-  // Many links (common in phishing)
   if (links.length > 5) {
     patterns.push("excessive_links");
     details.push(`Cantidad inusual de enlaces: ${links.length}`);
   }
 
-  // Unicode lookalikes (e.g., Ьanco instead of Banco)
   if (UNICODE_LOOKALIKE_PATTERN.test(subject ?? "") || UNICODE_LOOKALIKE_PATTERN.test(senderEmail ?? "")) {
     patterns.push("unicode_lookalike");
     details.push("Caracteres Unicode inusuales detectados en asunto o remitente — posible homografía");
   }
 
-  // Requests for credentials/personal data
   const credentialKeywords = ["contraseña", "password", "clave", "rut", "número de tarjeta", "cvv", "pin"];
   for (const kw of credentialKeywords) {
     if (fullText.includes(kw)) {
@@ -141,15 +133,10 @@ export function checkEmailPatterns(
     }
   }
 
-  // No sender domain (bare email)
   if (senderEmail && !senderEmail.includes("@")) {
     patterns.push("malformed_sender");
     details.push("Dirección de remitente malformada (sin dominio)");
   }
 
-  return {
-    patterns,
-    suspiciousCount: patterns.length,
-    details,
-  };
+  return { patterns, suspiciousCount: patterns.length, details };
 }
