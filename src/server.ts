@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { registerTools, TOOL_NAMES } from "./tools/registry.js";
+import { registerPhishingTools, PHISHING_TOOL_NAMES } from "./modules/phishing/mcp/tools.js";
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -11,7 +11,7 @@ function createMcpServer(): McpServer {
     name: "phishing-detector",
     version: "1.0.0",
   });
-  registerTools(server);
+  registerPhishingTools(server);
   return server;
 }
 
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
       status: "ok",
       name: "phishing-detector MCP server",
       version: "1.0.0",
-      tools: TOOL_NAMES,
+      tools: PHISHING_TOOL_NAMES,
       mcp_endpoint: "/mcp",
       transport: "StreamableHTTP",
     });
