@@ -1,0 +1,29 @@
+services:
+  mcp-server:
+    build: .
+    container_name: phishing-detector-mcp
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - PORT=3000
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: phishing-detector-tunnel
+    # Quick tunnel — no Cloudflare account needed.
+    # Public URL is printed in logs: docker compose logs -f cloudflared
+    command: tunnel --no-autoupdate --url http://mcp-server:3000
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    restart: unless-stopped
