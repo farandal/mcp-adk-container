@@ -3,16 +3,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import os
 import re
 from typing import Optional
 
-import anthropic
-
-from ..types import FraudReport
-from .check_email_patterns import check_email_patterns
-from .cmf_verify import verify_cmf_entity
-from .whois_lookup import lookup_domain_whois
+from src.core.claude import get_anthropic_client
+from src.modules.phishing.domain.patterns import check_email_patterns
+from src.modules.phishing.domain.cmf import verify_cmf_entity
+from src.modules.phishing.domain.whois import lookup_domain_whois
 
 SYSTEM_PROMPT = """Eres un experto en ciberseguridad financiera chilena. Tu tarea es analizar correos electrónicos potencialmente fraudulentos y generar informes de riesgo detallados, comprensibles para ciudadanos no técnicos.
 
@@ -89,7 +86,6 @@ async def analyze_email(
     )
     whois_data, cmf_result = await asyncio.gather(whois_task, cmf_task)
 
-    # Build context summaries
     if sender_domain and hasattr(whois_data, "domain"):
         whois_summary = (
             f"dominio={whois_data.domain}, "
@@ -133,7 +129,7 @@ async def analyze_email(
         f"Genera el informe JSON de riesgo."
     )
 
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = get_anthropic_client()
     response = client.messages.create(
         model="claude-sonnet-4-5",
         max_tokens=1500,

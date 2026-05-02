@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from ..types import PatternCheckResult
+from src.core.types import PatternCheckResult
 
 SUSPICIOUS_TLDS = {".xyz", ".top", ".club", ".work", ".click", ".link",
                   ".site", ".online", ".tech", ".info"}
@@ -70,7 +70,6 @@ def check_email_patterns(
     full_text = " ".join(filter(None, [email_content, subject, sender_email])).lower()
     links = _URL_RE.findall(email_content)
 
-    # Urgency language
     for kw in URGENCY_KEYWORDS:
         if kw.lower() in full_text:
             patterns.append("urgency_language")
@@ -80,14 +79,12 @@ def check_email_patterns(
     if sender_email:
         domain = _domain(sender_email)
         if domain:
-            # Suspicious TLD
             for tld in SUSPICIOUS_TLDS:
                 if domain.endswith(tld):
                     patterns.append("suspicious_tld")
                     details.append(f"Dominio remitente usa TLD sospechoso: {tld}")
                     break
 
-            # Sender spoofing: display name mentions institution but domain doesn't
             display = _display_name(sender_email)
             if display:
                 for pattern, institution in CHILEAN_INSTITUTIONS:
@@ -97,7 +94,6 @@ def check_email_patterns(
                             f'Nombre muestra "{institution}" pero dominio real es "{domain}" — posible suplantación'
                         )
 
-            # Institution mentioned in body but sender domain doesn't match
             for pattern, institution in CHILEAN_INSTITUTIONS:
                 if pattern.search(full_text) and not pattern.search(domain):
                     if "institution_mismatch" not in patterns:
@@ -106,7 +102,6 @@ def check_email_patterns(
                             f'Se menciona "{institution}" pero el remitente no usa el dominio oficial'
                         )
 
-    # Suspicious links
     for link in links:
         for url_pattern in SUSPICIOUS_URL_PATTERNS:
             if url_pattern.search(link):
@@ -119,21 +114,18 @@ def check_email_patterns(
         patterns.append("excessive_links")
         details.append(f"Cantidad inusual de enlaces: {len(links)}")
 
-    # Unicode lookalikes in subject/sender
     for field, label in [(subject or "", "asunto"), (sender_email or "", "remitente")]:
         if _NON_ASCII_RE.search(field):
             patterns.append("unicode_lookalike")
             details.append(f"Caracteres Unicode inusuales en {label} — posible homografía")
             break
 
-    # Credential requests
     for kw in CREDENTIAL_KEYWORDS:
         if kw in full_text:
             if "credential_request" not in patterns:
                 patterns.append("credential_request")
                 details.append(f'Solicita información sensible: "{kw}"')
 
-    # Malformed sender
     if sender_email and "@" not in sender_email:
         patterns.append("malformed_sender")
         details.append("Dirección de remitente malformada (sin dominio)")

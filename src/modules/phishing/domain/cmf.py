@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from ..types import CmfEntityResult
+from src.core.types import CmfEntityResult
 
 
 def _normalize(text: str) -> str:

@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 import httpx
 
-from ..types import WhoisData
+from src.core.types import WhoisData
 
 _DOMAIN_CLEAN_RE = re.compile(r"^https?://|/.*$")
 
@@ -79,5 +79,5 @@ async def lookup_domain_whois(domain: str) -> WhoisData:
             status=", ".join(data.get("status", [])) or None,
             nameservers=nameservers or None,
         )
-    except Exception as exc:
+    except Exception:
         return WhoisData(domain=clean)
