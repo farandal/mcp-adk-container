@@ -1,0 +1,13 @@
+from __future__ import annotations
+
+import os
+from anthropic import Anthropic
+
+_client: Anthropic | None = None
+
+
+def get_anthropic_client() -> Anthropic:
+    global _client
+    if _client is None:
+        _client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    return _client
