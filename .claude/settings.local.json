@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:google.github.io)",
+      "WebFetch(domain:adk.dev)",
+      "Bash(npm install *)"
+    ]
+  }
+}
