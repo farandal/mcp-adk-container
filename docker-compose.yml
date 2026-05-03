@@ -1,6 +1,8 @@
 services:
   mcp-server:
-    build: .
+    build:
+      context: ..
+      dockerfile: mcp-adk-container-1/Dockerfile
     container_name: phishing-detector-mcp
     ports:
       - "3000:3000"
@@ -9,6 +11,9 @@ services:
     environment:
       - PORT=3000
       - PYTHONUNBUFFERED=1
+      - OPENBLAS_NUM_THREADS=1
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',3000)); s.close()\""]
       interval: 10s
