@@ -21,6 +21,7 @@
 11. [Docker Infrastructure](#11-docker-infrastructure)
 12. [Configuration Reference](#12-configuration-reference)
 13. [Known Constraints and Design Decisions](#13-known-constraints-and-design-decisions)
+14. [Retraining the Image Fraud Model](#14-retraining-the-image-fraud-model)
 
 ---
 
@@ -441,3 +442,143 @@ All configuration is via environment variables, loaded from `.env` at startup by
 **CMF fuzzy match threshold.** The `_match_score` function accepts matches ≥ 0.5. This was chosen to catch common abbreviations ("Banco Chile" vs "Banco de Chile") while avoiding false positives. Lowering the threshold increases recall but risks matching unrelated institutions.
 
 **Base64 email support.** `analyze_email` attempts to decode the email body as base64 if it is longer than 100 characters and matches the base64 charset. This covers some email clients that encode the body. The heuristic is conservative — it requires the string to match `^[A-Za-z0-9+/=\n]+$` — so plain-text content with punctuation is never mistakenly decoded.
+
+---
+
+## 14. Retraining the Image Fraud Model
+
+"Retraining" in this system means **rebuilding the FAISS index** from the fraud image dataset. The CLIP encoder weights are never updated — only the reference embedding library changes. You need to retrain when:
+
+- New CSIRT bulletins have been downloaded and extracted (`dataset/csirt_extracted/` has grown).
+- The artifacts were deleted or corrupted.
+- You want to use a different `top_k` default or CLIP model variant.
+
+### Prerequisites
+
+All steps run inside the `csirt-img-ml-model` repo, **not** inside the MCP container.
+
+```bash
+cd /path/to/csirt-img-ml-model
+python3.9 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Step 1 — (Optional) Extract new images from PDFs
+
+Skip this step if `dataset/csirt_extracted/` is already populated and no new PDFs have been added.
+
+```bash
+# Place new CSIRT bulletin PDFs into dataset/csirt_pdf/ first, then:
+python extract_fraud_images.py
+# Input:  dataset/csirt_pdf/          (CSIRT bulletin PDFs)
+# Output: dataset/csirt_extracted/    (image + .txt pairs)
+```
+
+Each PDF page that contains a CSIRT incident table produces one `<stem>_p<NN>_<idx>.jpeg` and a companion `<stem>_p<NN>_<idx>.txt` with the parsed incident metadata.
+
+### Step 2 — Rebuild the FAISS index
+
+```bash
+python train.py
+# Optional flags:
+#   --dataset   dataset/csirt_extracted   (default)
+#   --artifacts fraud_model/artifacts     (default)
+#   --batch-size 32                       (images per CLIP batch)
+```
+
+`train.py` performs the following:
+
+1. Discovers all `*.jpeg` / `*.png` files under `--dataset` that have a paired `.txt`.
+2. Loads the pre-trained CLIP `ViT-B-32-quickgelu` (OpenAI weights, auto-downloaded ~340 MB on first run).
+3. Embeds all images in batches of `--batch-size`, L2-normalises each 512-dim vector.
+4. Builds a `faiss.IndexFlatIP` and adds all embeddings.
+5. Parses every `.txt` into an `IncidentMetadata` record (preserving index alignment).
+6. Writes three artifacts:
+
+| Artifact | Size | Description |
+|---|---|---|
+| `fraud_model/artifacts/index.faiss` | ~7.7 MB | FAISS flat inner-product index |
+| `fraud_model/artifacts/metadata.json` | ~3.0 MB | JSON array of incident records (aligned to index rows) |
+| `fraud_model/artifacts/embeddings.npy` | ~7.7 MB | Raw NumPy backup of the embedding matrix |
+
+Runtime on a single CPU core is approximately 9 minutes for 3,764 images.
+
+### Step 3 — Copy the new artifacts into the MCP container
+
+After rebuilding, the three artifact files must be available to the running Docker container. There are two ways to do this:
+
+**A. Rebuild the Docker image (recommended for production)**
+
+The Dockerfile already copies `csirt-img-ml-model/fraud_model/` (including `artifacts/`) into the image at build time. Rebuild from the `ANALYSISARMY` parent directory:
+
+```bash
+cd /path/to/ANALYSISARMY
+docker compose -f mcp-adk-container-1/docker-compose.yml build mcp-server
+docker compose -f mcp-adk-container-1/docker-compose.yml up -d
+```
+
+**B. Mount the artifacts directory as a volume (development)**
+
+Add a `volumes` entry to the `mcp-server` service in `docker-compose.yml` to bind-mount the live artifact directory:
+
+```yaml
+services:
+  mcp-server:
+    # … existing config …
+    volumes:
+      - ../csirt-img-ml-model/fraud_model/artifacts:/app/fraud_model/artifacts:ro
+```
+
+With this mount, rerunning `train.py` on the host immediately makes the new artifacts available without rebuilding the image. Restart the container to reload the singleton `FraudDetector`:
+
+```bash
+docker compose -f mcp-adk-container-1/docker-compose.yml restart mcp-server
+```
+
+### Step 4 — Verify
+
+Confirm the new index is loaded by checking the health endpoint:
+
+```bash
+curl http://localhost:3000/ | python3 -m json.tool
+```
+
+Then call `analyze_fraud_image` with a known fraud screenshot from the dataset and confirm the top match has `similarity` ≈ 1.0 and `risk_level` = `CRITICAL`.
+
+### Adding images incrementally (without full retraining)
+
+If you only have a small number of new confirmed fraud images, you can append them to the existing index without reprocessing the full dataset:
+
+```python
+from fraud_model.embedder import FraudImageEmbedder
+from fraud_model.metadata import parse_txt
+import faiss, json, numpy as np
+
+ARTIFACTS = "fraud_model/artifacts"
+
+embedder  = FraudImageEmbedder()
+index     = faiss.read_index(f"{ARTIFACTS}/index.faiss")
+metadata  = json.load(open(f"{ARTIFACTS}/metadata.json"))
+
+# Paths to new image files (each must have a paired .txt)
+new_images = ["/path/to/new_fraud_01.jpeg", "/path/to/new_fraud_02.jpeg"]
+new_txts   = ["/path/to/new_fraud_01.txt",  "/path/to/new_fraud_02.txt"]
+
+new_embs = embedder.embed_batch(new_images)   # shape (N, 512), L2-normalised
+index.add(new_embs)
+faiss.write_index(index, f"{ARTIFACTS}/index.faiss")
+
+for txt in new_txts:
+    metadata.append(parse_txt(txt).to_dict())
+json.dump(metadata, open(f"{ARTIFACTS}/metadata.json", "w"), ensure_ascii=False, indent=2)
+
+# Update the NumPy backup (optional)
+all_embs = np.vstack([
+    np.load(f"{ARTIFACTS}/embeddings.npy"),
+    new_embs,
+])
+np.save(f"{ARTIFACTS}/embeddings.npy", all_embs)
+```
+
+> **Important:** The FAISS index row order and the `metadata.json` array order must always stay in sync. Only append to both — never insert or reorder rows in an existing index.
