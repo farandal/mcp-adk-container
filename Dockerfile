@@ -6,6 +6,12 @@ WORKDIR /app
 COPY mcp-adk-container-1/requirements.txt .
 RUN pip install --no-cache-dir --progress-bar off -r requirements.txt
 
+# Make HF cache explicit/persistent in image and disable xet backend.
+ENV HF_HOME=/app/.cache/huggingface
+ENV HUGGINGFACE_HUB_CACHE=/app/.cache/huggingface/hub
+ENV HF_HUB_DISABLE_XET=1
+ENV HF_HUB_ENABLE_HF_TRANSFER=0
+
 # Copy MCP server source
 COPY mcp-adk-container-1/src ./src
 

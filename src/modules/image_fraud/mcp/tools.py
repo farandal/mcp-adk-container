@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from mcp.server.fastmcp import FastMCP
 
 from src.modules.image_fraud.domain.detector import score_image_b64
+
+logger = logging.getLogger(__name__)
 
 IMAGE_FRAUD_TOOL_NAMES = [
     "analyze_fraud_image",
@@ -48,5 +51,37 @@ def register_image_fraud_tools(mcp: FastMCP) -> None:
           LOW       ≥ 0.35  Leve parecido; requiere revisión manual.
           MINIMAL   < 0.35  Sin similitud significativa con fraudes conocidos.
         """
-        result = score_image_b64(image_b64, top_k=top_k)
+        image_len = len(image_b64) if image_b64 else 0
+        logger.info(
+            "ML fraud-image invocation received top_k=%s image_b64_len=%s",
+            top_k,
+            image_len,
+        )
+
+        try:
+            result = score_image_b64(image_b64, top_k=top_k)
+        except BaseException as exc:
+            logger.exception("ML fraud-image invocation failed")
+            message = str(exc)
+            if "tracing-appender" in message or "hf_xet" in message:
+                raise RuntimeError(
+                    "Image model initialization failed in container runtime (hf_xet thread spawn). "
+                    "Set HF_HUB_DISABLE_XET=1 and redeploy mcp-server."
+                ) from exc
+            raise RuntimeError(f"analyze_fraud_image failed: {message}") from exc
+
+        top_matches = result.get("top_matches") or []
+        top_alert_codes = [
+            match.get("alert_code")
+            for match in top_matches[:3]
+            if isinstance(match, dict) and match.get("alert_code")
+        ]
+        logger.info(
+            "ML fraud-image result fraud_score=%s risk_level=%s matches=%s top_alert_codes=%s",
+            result.get("fraud_score"),
+            result.get("risk_level"),
+            len(top_matches),
+            ",".join(top_alert_codes) if top_alert_codes else "none",
+        )
+
         return json.dumps(result, ensure_ascii=False, indent=2)

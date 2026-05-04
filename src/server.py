@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -15,6 +16,11 @@ from starlette.routing import Mount, Route
 
 from src.modules.phishing.mcp.tools import register_phishing_tools, PHISHING_TOOL_NAMES
 from src.modules.image_fraud.mcp.tools import register_image_fraud_tools, IMAGE_FRAUD_TOOL_NAMES
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
 
 mcp = FastMCP(
     name="phishing-detector",

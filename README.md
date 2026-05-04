@@ -4,6 +4,13 @@
 
 MCP server implementado en **Python con FastMCP** para detección de phishing y fraude financiero en correos. Corre en Docker y se expone mediante Cloudflare Tunnel.
 
+## Quick Notes
+
+cd mcp-adk-container-1
+docker-compose up -d --build
+docker logs -f phishing-detector-mcp
+
+
 ## Arquitectura
 
 ```
@@ -49,6 +56,12 @@ docker compose up --build
 # Obtener la URL pública del tunnel:
 docker compose logs cloudflared
 # → "Your quick Tunnel... https://xxx.trycloudflare.com"
+
+# Ver logs del servidor MCP en tiempo real:
+docker-compose logs -f mcp-server
+
+# Alternativa directa por nombre de contenedor:
+docker logs -f phishing-detector-mcp
 ```
 
 ### 3. Conectar a Claude Code
