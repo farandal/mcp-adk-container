@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
+import anyio
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,6 +18,7 @@ from starlette.routing import Mount, Route
 
 from src.modules.phishing.mcp.tools import register_phishing_tools, PHISHING_TOOL_NAMES
 from src.modules.image_fraud.mcp.tools import register_image_fraud_tools, IMAGE_FRAUD_TOOL_NAMES
+from src.modules.image_fraud.domain.detector import get_detector
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,8 +58,22 @@ def create_app() -> Starlette:
     mcp_asgi = mcp.streamable_http_app()
     # Ensure MCP handshake requests are not redirected between /mcp and /mcp/
     mcp_asgi.router.redirect_slashes = False
+
+    logger = logging.getLogger("server")
+
+    @asynccontextmanager
+    async def lifespan(app: Starlette):
+        logger.info("Warming up image fraud detector (CLIP + FAISS)…")
+        try:
+            await anyio.to_thread.run_sync(get_detector)
+            logger.info("Image fraud detector ready.")
+        except Exception:
+            logger.exception("Image fraud detector warm-up failed; will retry lazily on first call")
+        async with mcp_asgi.router.lifespan_context(app):
+            yield
+
     app = Starlette(
-        lifespan=mcp_asgi.router.lifespan_context,
+        lifespan=lifespan,
         routes=[
             Route("/", health),
             Mount("/", app=mcp_asgi),
